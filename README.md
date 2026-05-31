@@ -1,17 +1,91 @@
-# doc-index-mcp
+# MCP-Context9
 
 索引 OpenClaw/OpenCode 官方文档及本地 Markdown，提供语义检索。
+
+## 功能
+
+- 语义检索官方文档（OpenClaw、OpenCode）
+- 本地 Markdown 文档实时监听索引
+- MCP 协议集成，OpenClaw/OpenCode 可直接调用
 
 ## 安装
 
 ```bash
+cd /Users/niufen/my-projects/MCP-Context9
 pip install -r requirements.txt
 ```
 
-## 使用
+## 启动 MCP Server
 
 ```bash
 python -m src.server
+```
+
+默认端口：`MCP_PORT=3000`（可选）
+
+## 索引官方文档
+
+首次使用需要手动索引官方文档：
+
+```bash
+cd /Users/niufen/my-projects/MCP-Context9
+python3 -c "
+from src.crawler import OfficialDocCrawler
+from src.index_service import IndexService
+
+crawler = OfficialDocCrawler()
+index_service = IndexService()
+
+# 索引 OpenClaw 文档
+print('Indexing OpenClaw docs...')
+docs = crawler.crawl_source('openclaw', limit=200)
+for doc in docs:
+    index_service.add_document(doc)
+print(f'Indexed {len(docs)} OpenClaw docs')
+
+# 索引 OpenCode 文档
+print('Indexing OpenCode docs...')
+docs = crawler.crawl_source('opencode', limit=200)
+for doc in docs:
+    index_service.add_document(doc)
+print(f'Indexed {len(docs)} OpenCode docs')
+"
+```
+
+## OpenClaw 配置
+
+在 OpenClaw 的 MCP 配置中添加：
+
+```json
+{
+  "mcpServers": {
+    "context9": {
+      "command": "python",
+      "args": ["-m", "src.server"],
+      "cwd": "/Users/niufen/my-projects/MCP-Context9",
+      "env": {}
+    }
+  }
+}
+```
+
+重启 OpenClaw 后即可使用。
+
+## OpenCode 配置
+
+在 OpenCode 的 MCP 配置中添加：
+
+```json
+{
+  "mcpServers": {
+    "context9": {
+      "command": "python",
+      "args": ["-m", "src.server"],
+      "cwd": "/Users/niufen/my-projects/MCP-Context9",
+      "env": {}
+    }
+  }
+}
 ```
 
 ## MCP 工具
@@ -21,35 +95,50 @@ python -m src.server
 | `search_docs` | query, source?, limit? | 语义检索文档 |
 | `get_doc` | doc_id | 获取完整文档 |
 
-## 手动索引官方文档
+### search_docs 参数
 
-```python
-from src.crawler import OfficialDocCrawler
-from src.index_service import IndexService
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| query | string | 是 | 搜索 query |
+| source | string | 否 | 过滤来源：`openclaw` / `opencode` / `local` |
+| limit | integer | 否 | 返回数量，默认 5 |
 
-crawler = OfficialDocCrawler()
-index_service = IndexService()
+### get_doc 参数
 
-# 爬取 OpenClaw 文档（最多 100 篇）
-docs = crawler.crawl_source("openclaw", limit=100)
-for doc in docs:
-    index_service.add_document(doc)
-
-# 爬取 OpenCode 文档
-docs = crawler.crawl_source("opencode", limit=100)
-for doc in docs:
-    index_service.add_document(doc)
-```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| doc_id | string | 是 | 文档唯一标识 |
 
 ## 数据源
 
 | 来源 | 说明 |
 |------|------|
-| OpenClaw | docs.openclaw.ai（通过 sitemap 爬取） |
-| OpenCode | opencode.ai/docs（通过 sitemap 爬取） |
-| 本地 | ~/my-claw/*.md（实时监听） |
+| OpenClaw | docs.openclaw.ai（手动索引） |
+| OpenCode | opencode.ai/docs（手动索引） |
+| 本地 | ~/my-claw/*.md（自动监听） |
 
 ## 环境变量
 
-- `INDEX_DIR`: ChromaDB 索引目录（默认: ~/.index/doc-index）
-- `LOCAL_DOCS_PATH`: 本地文档路径（默认: ~/my-claw）
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `INDEX_DIR` | `~/.index/doc-index` | ChromaDB 索引目录 |
+| `LOCAL_DOCS_PATH` | `~/my-claw` | 本地文档路径 |
+| `MCP_PORT` | `3000` | MCP Server 端口 |
+
+## 项目结构
+
+```
+MCP-Context9/
+├── src/
+│   ├── server.py         # MCP Server
+│   ├── tools.py          # search_docs, get_doc
+│   ├── index_service.py  # ChromaDB 索引
+│   ├── crawler.py        # 官方文档爬虫
+│   └── file_watcher.py  # 本地文件监听
+├── indexer/
+│   ├── embedder.py       # fastembed embedding
+│   └── chunker.py        # 文档分块
+├── tests/
+├── requirements.txt
+└── README.md
+```
