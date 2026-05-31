@@ -1,13 +1,38 @@
 import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
-import re
+import os
+import time
+from urllib.parse import urlparse
+import xml.etree.ElementTree as ET
+
+class SitemapParser:
+    def __init__(self, url: str):
+        self.urls = []
+        try:
+            response = httpx.Client(timeout=30.0).get(url)
+            response.raise_for_status()
+            root = ET.fromstring(response.text)
+            ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+            if root.tag.endswith("sitemapindex"):
+                for sitemap in root.findall("sm:sitemap", ns):
+                    loc = sitemap.find("sm:loc", ns)
+                    if loc is not None and loc.text:
+                        sub_sitemap = SitemapParser(loc.text)
+                        self.urls.extend(sub_sitemap.urls)
+            else:
+                for url_elem in root.findall("sm:url", ns):
+                    loc = url_elem.find("sm:loc", ns)
+                    if loc is not None and loc.text:
+                        self.urls.append(loc.text)
+        except Exception as e:
+            print(f"Error parsing sitemap {url}: {e}")
 
 class OfficialDocCrawler:
     def __init__(self):
         self.sources = {
-            "openclaw": "https://docs.openclaw.ai",
-            "opencode": "https://docs.opencode.ai",
+            "openclaw": "https://docs.openclaw.ai/sitemap.xml",
+            "opencode": "https://opencode.ai/docs/sitemap-index.xml",
             "claude": "https://docs.anthropic.com"
         }
         self.client = httpx.Client(timeout=30.0)
@@ -29,18 +54,58 @@ class OfficialDocCrawler:
             print(f"Error crawling {url}: {e}")
             return None
 
-    def get_doc_title(self, url: str) -> str:
-        """从 URL 提取文档标题"""
-        path = url.split("/")[-1]
-        title = path.replace("-", " ").replace(".md", "")
-        return title.title()
+    def get_doc_title(self, url: str, content: str = "") -> str:
+        """从 URL 或内容提取文档标题"""
+        if content:
+            soup = BeautifulSoup(content, "lxml")
+            h1 = soup.find("h1")
+            if h1:
+                return h1.get_text(strip=True)
+        path = urlparse(url).path
+        parts = [p for p in path.split("/") if p]
+        if parts:
+            return parts[-1].replace("-", " ").replace(".md", "").title()
+        return "Untitled"
 
-    def crawl_source(self, source: str, limit: int = 100):
+    def crawl_source(self, source: str, limit: int = 100, delay: float = 0.5) -> list[dict]:
         """爬取指定来源的所有文档"""
         if source not in self.sources:
             raise ValueError(f"Unknown source: {source}")
 
-        base_url = self.sources[source]
+        sitemap_url = self.sources[source]
         docs = []
 
+        try:
+            if sitemap_url.endswith(".xml"):
+                sitemap = SitemapParser(sitemap_url)
+                urls = sitemap.urls[:limit] if limit else sitemap.urls
+            else:
+                urls = []
+
+            for i, url in enumerate(urls):
+                print(f"[{source}] Crawling {i+1}/{len(urls)}: {url}")
+                content = self.crawl_page(url)
+                if content:
+                    title = self.get_doc_title(url, content)
+                    doc_id = f"{source}-{i:04d}"
+                    docs.append({
+                        "doc_id": doc_id,
+                        "title": title,
+                        "source": source,
+                        "url": url,
+                        "content": content
+                    })
+                time.sleep(delay)
+
+        except Exception as e:
+            print(f"Error parsing sitemap {sitemap_url}: {e}")
+
         return docs
+
+    def crawl_all(self, limit_per_source: int = 100) -> list[dict]:
+        """爬取所有来源的文档"""
+        all_docs = []
+        for source in self.sources:
+            docs = self.crawl_source(source, limit=limit_per_source)
+            all_docs.extend(docs)
+        return all_docs
