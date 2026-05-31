@@ -1,7 +1,9 @@
 import chromadb
 from chromadb.config import Settings
 import os
-from typing import Optional
+import json
+import time
+from typing import Optional, Set
 from indexer.chunker import chunk_markdown
 from indexer.embedder import Embedder
 
@@ -81,3 +83,48 @@ class IndexService:
     def delete_document(self, doc_id: str):
         """删除文档"""
         self.collection.delete(where={"doc_id": doc_id})
+
+    def get_indexed_paths(self) -> Set[str]:
+        """获取已索引的文件路径集合"""
+        paths_file = os.path.join(self.index_dir, "indexed_paths.json")
+        if os.path.exists(paths_file):
+            with open(paths_file, "r") as f:
+                return set(json.load(f))
+        return set()
+
+    def save_indexed_paths(self, paths: Set[str]):
+        """保存已索引的文件路径集合"""
+        paths_file = os.path.join(self.index_dir, "indexed_paths.json")
+        with open(paths_file, "w") as f:
+            json.dump(list(paths), f)
+
+    def is_file_indexed(self, path: str, mtime: float) -> bool:
+        """检查文件是否已索引且未修改"""
+        index_meta_file = os.path.join(self.index_dir, "file_mtimes.json")
+        if os.path.exists(index_meta_file):
+            with open(index_meta_file, "r") as f:
+                mtimes = json.load(f)
+            return path in mtimes and mtimes[path] >= mtime
+        return False
+
+    def save_file_mtime(self, path: str, mtime: float):
+        """保存文件修改时间"""
+        mtime_file = os.path.join(self.index_dir, "file_mtimes.json")
+        mtimes = {}
+        if os.path.exists(mtime_file):
+            with open(mtime_file, "r") as f:
+                mtimes = json.load(f)
+        mtimes[path] = mtime
+        with open(mtime_file, "w") as f:
+            json.dump(mtimes, f)
+
+    def remove_file_mtime(self, path: str):
+        """删除文件修改时间记录"""
+        mtime_file = os.path.join(self.index_dir, "file_mtimes.json")
+        if os.path.exists(mtime_file):
+            with open(mtime_file, "r") as f:
+                mtimes = json.load(f)
+            if path in mtimes:
+                del mtimes[path]
+            with open(mtime_file, "w") as f:
+                json.dump(mtimes, f)

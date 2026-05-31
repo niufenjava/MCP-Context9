@@ -24,9 +24,13 @@ class MarkdownFileHandler(FileSystemEventHandler):
             return
         doc_id = self._path_to_doc_id(event.src_path)
         self.index_service.delete_document(doc_id)
+        self.index_service.remove_file_mtime(event.src_path)
 
     def _index_file(self, path: str):
         try:
+            mtime = os.path.getmtime(path)
+            if self.index_service.is_file_indexed(path, mtime):
+                return
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
             doc_id = self._path_to_doc_id(path)
@@ -38,6 +42,7 @@ class MarkdownFileHandler(FileSystemEventHandler):
                 "url": path,
                 "content": content
             })
+            self.index_service.save_file_mtime(path, mtime)
         except Exception as e:
             print(f"Error indexing {path}: {e}")
 
@@ -60,9 +65,22 @@ class FileWatcher:
         self.observer.join()
 
     def index_existing(self):
-        """索引现有所有文件"""
+        """索引现有所有文件，跳过未修改的"""
+        count = 0
+        skipped = 0
         for root, dirs, files in os.walk(self.root_dir):
             for file in files:
                 if file.endswith(".md"):
                     path = os.path.join(root, file)
-                    self.handler._index_file(path)
+                    try:
+                        mtime = os.path.getmtime(path)
+                        if self.index_service.is_file_indexed(path, mtime):
+                            skipped += 1
+                            continue
+                        self.handler._index_file(path)
+                        count += 1
+                        if count % 50 == 0:
+                            print(f"[Watcher] Indexed {count} new files...")
+                    except Exception as e:
+                        print(f"Error checking {path}: {e}")
+        print(f"[Watcher] Done. Indexed {count} new files, skipped {skipped} unchanged.")
