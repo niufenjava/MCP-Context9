@@ -5,6 +5,8 @@ import os
 import time
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
+import threading
+import schedule
 
 class SitemapParser:
     def __init__(self, url: str):
@@ -109,3 +111,42 @@ class OfficialDocCrawler:
             docs = self.crawl_source(source, limit=limit_per_source)
             all_docs.extend(docs)
         return all_docs
+
+
+class CrawlScheduler:
+    def __init__(self, crawler: OfficialDocCrawler, index_service, interval_hours: int = 1):
+        self.crawler = crawler
+        self.index_service = index_service
+        self.interval_hours = interval_hours
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def _job(self):
+        """Run incremental crawl and update index"""
+        print(f"[Scheduler] Starting incremental crawl...")
+        for source in self.crawler.sources:
+            docs = self.crawler.crawl_source(source, limit=50, delay=0.3)
+            for doc in docs:
+                self.index_service.add_document(doc)
+        print(f"[Scheduler] Incremental crawl complete")
+
+    def start(self):
+        """Start the scheduler in a background thread"""
+        self._stop_event.clear()
+        schedule.every(self.interval_hours).hours.do(self._job)
+
+        def run_scheduler():
+            while not self._stop_event.is_set():
+                schedule.run_pending()
+                time.sleep(1)
+
+        self._thread = threading.Thread(target=run_scheduler, daemon=True)
+        self._thread.start()
+        print(f"[Scheduler] Started with {self.interval_hours}h interval")
+
+    def stop(self):
+        """Stop the scheduler"""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+        print("[Scheduler] Stopped")

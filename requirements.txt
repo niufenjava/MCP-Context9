@@ -5,3 +5,4 @@ watchdog
 httpx
 beautifulsoup4
 lxml
+schedule

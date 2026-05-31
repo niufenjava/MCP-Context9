@@ -3,8 +3,9 @@ import threading
 import mcp
 from mcp.server import Server
 from mcp.types import Tool, TextContent
-from src.tools import search_docs, get_doc
+from src.tools import search_docs, get_doc, get_index_service
 from src.file_watcher import FileWatcher
+from src.crawler import OfficialDocCrawler, CrawlScheduler
 import json
 
 server = Server("doc-index-mcp")
@@ -59,6 +60,9 @@ watcher_thread = threading.Thread(target=watcher.start, daemon=True)
 watcher_thread.start()
 
 watcher.index_existing()
+
+scheduler = CrawlScheduler(crawler=OfficialDocCrawler(), index_service=get_index_service(), interval_hours=1)
+scheduler.start()
 
 if __name__ == "__main__":
     mcp.server.run_server(server)
