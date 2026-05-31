@@ -1,0 +1,7 @@
+mcp
+chromadb
+sentence-transformers
+watchdog
+httpx
+beautifulsoup4
+lxml
