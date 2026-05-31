@@ -15,21 +15,14 @@ cd /Users/niufen/my-projects/MCP-Context9
 pip install -r requirements.txt
 ```
 
-## 启动 MCP Server
-
-```bash
-python -m src.server
-```
-
-默认端口：`MCP_PORT=3000`（可选）
-
 ## 索引官方文档
 
 首次使用需要手动索引官方文档：
 
 ```bash
 cd /Users/niufen/my-projects/MCP-Context9
-python3 -c "
+source .venv/bin/activate
+python -c "
 from src.crawler import OfficialDocCrawler
 from src.index_service import IndexService
 
@@ -60,16 +53,15 @@ print(f'Indexed {len(docs)} OpenCode docs')
 {
   "mcpServers": {
     "context9": {
-      "command": "python",
+      "command": "/Users/niufen/my-projects/MCP-Context9/.venv/bin/python",
       "args": ["-m", "src.server"],
-      "cwd": "/Users/niufen/my-projects/MCP-Context9",
-      "env": {}
+      "cwd": "/Users/niufen/my-projects/MCP-Context9"
     }
   }
 }
 ```
 
-重启 OpenClaw 后即可使用。
+OpenClaw 启动时会自动启动 MCP Server。
 
 ## OpenCode 配置
 
@@ -79,14 +71,15 @@ print(f'Indexed {len(docs)} OpenCode docs')
 {
   "mcpServers": {
     "context9": {
-      "command": "python",
+      "command": "/Users/niufen/my-projects/MCP-Context9/.venv/bin/python",
       "args": ["-m", "src.server"],
-      "cwd": "/Users/niufen/my-projects/MCP-Context9",
-      "env": {}
+      "cwd": "/Users/niufen/my-projects/MCP-Context9"
     }
   }
 }
 ```
+
+OpenCode 启动时会自动启动 MCP Server。
 
 ## MCP 工具
 
@@ -123,7 +116,6 @@ print(f'Indexed {len(docs)} OpenCode docs')
 |------|--------|------|
 | `INDEX_DIR` | `~/.index/doc-index` | ChromaDB 索引目录 |
 | `LOCAL_DOCS_PATH` | `~/my-claw` | 本地文档路径 |
-| `MCP_PORT` | `3000` | MCP Server 端口 |
 
 ## 项目结构
 
@@ -139,6 +131,7 @@ MCP-Context9/
 │   ├── embedder.py       # fastembed embedding
 │   └── chunker.py        # 文档分块
 ├── tests/
+├── .venv/               # Python 虚拟环境
 ├── requirements.txt
 └── README.md
 ```
