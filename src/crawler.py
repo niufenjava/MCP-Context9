@@ -1,12 +1,9 @@
 import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
-import os
 import time
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
-import threading
-import schedule
 
 class SitemapParser:
     def __init__(self, url: str):

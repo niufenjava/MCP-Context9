@@ -54,12 +54,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     else:
         raise ValueError(f"Unknown tool: {name}")
 
-local_docs_path = os.path.expanduser("~/my-claw")
-watcher = FileWatcher(root_dir=local_docs_path)
-watcher_thread = threading.Thread(target=watcher.start, daemon=True)
-watcher_thread.start()
-
-watcher.index_existing()
-
 if __name__ == "__main__":
+    local_docs_path = os.path.expanduser("~/my-claw")
+    watcher = FileWatcher(root_dir=local_docs_path)
+    watcher_thread = threading.Thread(target=watcher.start, daemon=True)
+    watcher_thread.start()
+    watcher.index_existing()
+
     mcp.server.run_server(server)
