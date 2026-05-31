@@ -1,7 +1,10 @@
+import os
+import threading
 import mcp
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from src.tools import search_docs, get_doc
+from src.file_watcher import FileWatcher
 import json
 
 server = Server("doc-index-mcp")
@@ -49,6 +52,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
     else:
         raise ValueError(f"Unknown tool: {name}")
+
+local_docs_path = os.path.expanduser("~/my-claw")
+watcher = FileWatcher(root_dir=local_docs_path)
+watcher_thread = threading.Thread(target=watcher.start, daemon=True)
+watcher_thread.start()
+
+watcher.index_existing()
 
 if __name__ == "__main__":
     mcp.server.run_server(server)
