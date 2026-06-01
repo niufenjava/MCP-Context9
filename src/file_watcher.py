@@ -101,7 +101,10 @@ class FileWatcher:
         for root, dirs, files in os.walk(self.root_dir):
             rel = os.path.relpath(root, self.root_dir)
             parts = [p for p in rel.split(os.sep) if p]
-            top_dir = parts[0] if parts else ""
+            if rel == "." or not parts:
+                dirs[:] = [d for d in dirs if d in ALLOWED_DIRS]
+                continue
+            top_dir = parts[0]
             if top_dir not in ALLOWED_DIRS:
                 dirs[:] = []
                 continue
