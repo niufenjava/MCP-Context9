@@ -13,7 +13,6 @@ class IndexService:
         self.index_dir = index_dir or os.path.expanduser("~/.index/doc-index")
         os.makedirs(self.index_dir, exist_ok=True)
         
-        chromadb.settings.settings.chroma_db_impl = "duckdb+parquet"
         os.environ["OMP_NUM_THREADS"] = "2"
         
         self.client = chromadb.PersistentClient(path=self.index_dir)
