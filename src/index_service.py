@@ -3,6 +3,7 @@ from chromadb.config import Settings
 import os
 import json
 import time
+import threading
 from typing import Optional, Set
 from indexer.chunker import chunk_markdown
 from indexer.embedder import Embedder
@@ -11,12 +12,25 @@ class IndexService:
     def __init__(self, index_dir: str = None):
         self.index_dir = index_dir or os.path.expanduser("~/.index/doc-index")
         os.makedirs(self.index_dir, exist_ok=True)
+        
+        chromadb.settings.settings.chroma_db_impl = "duckdb+parquet"
+        os.environ["OMP_NUM_THREADS"] = "2"
+        
         self.client = chromadb.PersistentClient(path=self.index_dir)
         self.collection = self.client.get_or_create_collection(
             name="documents",
             metadata={"hnsw:space": "cosine"}
         )
-        self.embedder = Embedder()
+        self._embedder = None
+        self._embedder_lock = threading.Lock()
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            with self._embedder_lock:
+                if self._embedder is None:
+                    self._embedder = Embedder()
+        return self._embedder
 
     def add_document(self, doc: dict):
         """添加文档到索引"""
