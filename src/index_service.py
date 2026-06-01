@@ -1,8 +1,7 @@
-import chromadb
-from chromadb.config import Settings
+import sqlite3
+import sqlite_vec
 import os
 import json
-import time
 import threading
 from typing import Optional, Set
 from indexer.chunker import chunk_markdown
@@ -12,17 +11,49 @@ class IndexService:
     def __init__(self, index_dir: str = None):
         self.index_dir = index_dir or os.path.expanduser("~/.index/doc-index")
         os.makedirs(self.index_dir, exist_ok=True)
-        
-        self.client = chromadb.EphemeralClient()
-        self.collection = self.client.get_or_create_collection(
-            name="documents",
-            metadata={"hnsw:space": "cosine"}
-        )
-        self._embedder = None
+
+        self.db_path = os.path.join(self.index_dir, "doc-index.db")
+        self._conn: Optional[sqlite3.Connection] = None
+        self._embedder: Optional[Embedder] = None
         self._embedder_lock = threading.Lock()
+        self._tables_initialized = False
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(self.db_path)
+            self._conn.execute("PRAGMA foreign_keys = ON")
+            self._conn.execute("PRAGMA secure_delete = ON")
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+        return self._conn
+
+    def _init_tables(self):
+        if self._tables_initialized:
+            return
+        conn = self._get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS doc_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                doc_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                source TEXT NOT NULL,
+                url TEXT NOT NULL,
+                content TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                vec_rowid INTEGER NOT NULL
+            )
+        """)
+        dim = self.embedder.dimension
+        conn.execute(f"""
+            CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
+                embedding float[{dim}]
+            )
+        """)
+        conn.commit()
+        self._tables_initialized = True
 
     @property
-    def embedder(self):
+    def embedder(self) -> Embedder:
         if self._embedder is None:
             with self._embedder_lock:
                 if self._embedder is None:
@@ -31,69 +62,93 @@ class IndexService:
 
     def add_document(self, doc: dict):
         """添加文档到索引"""
+        self._init_tables()
+        conn = self._get_conn()
         chunks = chunk_markdown(doc["content"])
         for i, chunk in enumerate(chunks):
             chunk_id = f"{doc['doc_id']}-{i}"
-            embedding = self.embedder.encode(chunk["content"])
-            self.collection.add(
-                ids=[chunk_id],
-                embeddings=embedding,
-                documents=[chunk["content"]],
-                metadatas=[{
-                    "doc_id": doc["doc_id"],
-                    "title": doc["title"],
-                    "source": doc["source"],
-                    "url": doc["url"],
-                    "chunk_index": i
-                }]
+            embedding = self.embedder.encode(chunk["content"])[0]
+            vec_blob = sqlite_vec.serialize_float32(embedding)
+            cursor = conn.execute(
+                "INSERT INTO vec_chunks(embedding) VALUES (?)",
+                (vec_blob,)
             )
+            vec_rowid = cursor.lastrowid
+            conn.execute(
+                "INSERT INTO doc_chunks (chunk_id, doc_id, title, source, url, content, chunk_index, vec_rowid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (chunk_id, doc["doc_id"], doc["title"], doc["source"], doc["url"], chunk["content"], i, vec_rowid)
+            )
+        conn.commit()
 
     def search(self, query: str, source: Optional[str] = None, limit: int = 5) -> list[dict]:
         """搜索文档"""
-        embedding = self.embedder.encode(query)
-        results = self.collection.query(
-            query_embeddings=embedding,
-            n_results=limit,
-            where={"source": source} if source else None
-        )
-        return [
-            {
-                "doc_id": meta["doc_id"],
-                "title": meta["title"],
-                "source": meta["source"],
-                "url": meta["url"],
-                "content": doc,
-                "score": score
-            }
-            for doc, meta, score in zip(
-                results["documents"][0],
-                results["metadatas"][0],
-                results["distances"][0]
-            )
-        ]
+        self._init_tables()
+        embedding = self.embedder.encode(query)[0]
+        import sqlite_vec
+        vec_blob = sqlite_vec.serialize_float32(embedding)
+        conn = self._get_conn()
+        fetch_limit = limit * 5 if source else limit
+        results = conn.execute(f"""
+            SELECT
+                dc.chunk_id, dc.doc_id, dc.title, dc.source, dc.url, dc.content, dc.chunk_index,
+                vc.distance
+            FROM doc_chunks dc
+            JOIN (
+                SELECT rowid, distance
+                FROM vec_chunks
+                WHERE embedding match ?
+                ORDER BY distance
+                LIMIT {fetch_limit}
+            ) vc ON dc.vec_rowid = vc.rowid
+        """, (vec_blob,)).fetchall()
+        docs = []
+        for row in results:
+            if source and row[3] != source:
+                continue
+            docs.append({
+                "doc_id": row[1],
+                "title": row[2],
+                "source": row[3],
+                "url": row[4],
+                "content": row[5],
+                "score": row[7]
+            })
+            if len(docs) >= limit:
+                break
+        return docs
 
     def get_document(self, doc_id: str) -> Optional[dict]:
         """获取文档所有 chunks"""
-        results = self.collection.get(
-            where={"doc_id": doc_id}
-        )
-        if not results["ids"]:
+        self._init_tables()
+        conn = self._get_conn()
+        results = conn.execute("""
+            SELECT doc_id, title, source, url, content, chunk_index
+            FROM doc_chunks
+            WHERE doc_id = ?
+            ORDER BY chunk_index
+        """, (doc_id,)).fetchall()
+        if not results:
             return None
-        chunks = sorted(
-            zip(results["metadatas"], results["documents"]),
-            key=lambda x: x[0].get("chunk_index", 0)
-        )
+        first = results[0]
         return {
-            "doc_id": doc_id,
-            "title": chunks[0][0]["title"],
-            "source": chunks[0][0]["source"],
-            "url": chunks[0][0]["url"],
-            "content": "\n\n".join(c for _, c in chunks)
+            "doc_id": first[0],
+            "title": first[1],
+            "source": first[2],
+            "url": first[3],
+            "content": "\n\n".join(r[4] for r in results)
         }
 
     def delete_document(self, doc_id: str):
         """删除文档"""
-        self.collection.delete(where={"doc_id": doc_id})
+        self._init_tables()
+        conn = self._get_conn()
+        rowids = [r[0] for r in conn.execute(
+            "SELECT vec_rowid FROM doc_chunks WHERE doc_id = ?", (doc_id,)
+        ).fetchall()]
+        for rowid in rowids:
+            conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (rowid,))
+        conn.execute("DELETE FROM doc_chunks WHERE doc_id = ?", (doc_id,))
+        conn.commit()
 
     def get_indexed_paths(self) -> Set[str]:
         """获取已索引的文件路径集合"""
