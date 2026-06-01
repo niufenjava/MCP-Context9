@@ -7,6 +7,8 @@
 - 语义检索官方文档（OpenClaw、OpenCode）
 - 本地 Markdown 文档实时监听索引
 - MCP 协议集成，OpenClaw/OpenCode 可直接调用
+- 搜索结果缓存，重复查询零 CPU
+- 增量索引，只处理变更文件
 
 ## 安装
 
@@ -15,12 +17,22 @@ cd /Users/niufen/my-projects/MCP-Context9
 pip install -r requirements.txt
 ```
 
-## 索引官方文档
+## 启动
 
-首次使用需要手动索引官方文档：
+OpenClaw/OpenCode 启动时会自动拉起 MCP Server。
+
+手动启动：
 
 ```bash
-cd /Users/niufen/my-projects/MCP-Context9
+source .venv/bin/activate
+python -m src.server
+```
+
+## 索引官方文档
+
+首次使用需要手动索引：
+
+```bash
 source .venv/bin/activate
 python -c "
 from src.crawler import OfficialDocCrawler
@@ -30,25 +42,23 @@ crawler = OfficialDocCrawler()
 index_service = IndexService()
 
 # 索引 OpenClaw 文档
-print('Indexing OpenClaw docs...')
+print('Indexing OpenClaw...')
 docs = crawler.crawl_source('openclaw', limit=200)
 for doc in docs:
     index_service.add_document(doc)
-print(f'Indexed {len(docs)} OpenClaw docs')
+print(f'Indexed {len(docs)} docs')
 
 # 索引 OpenCode 文档
-print('Indexing OpenCode docs...')
+print('Indexing OpenCode...')
 docs = crawler.crawl_source('opencode', limit=200)
 for doc in docs:
     index_service.add_document(doc)
-print(f'Indexed {len(docs)} OpenCode docs')
+print(f'Indexed {len(docs)} docs')
 "
 ```
 
 ## OpenClaw 配置
 
-在 OpenClaw 的 MCP 配置中添加：
-
 ```json
 {
   "mcpServers": {
@@ -60,13 +70,9 @@ print(f'Indexed {len(docs)} OpenCode docs')
   }
 }
 ```
-
-OpenClaw 启动时会自动启动 MCP Server。
 
 ## OpenCode 配置
 
-在 OpenCode 的 MCP 配置中添加：
-
 ```json
 {
   "mcpServers": {
@@ -78,8 +84,6 @@ OpenClaw 启动时会自动启动 MCP Server。
   }
 }
 ```
-
-OpenCode 启动时会自动启动 MCP Server。
 
 ## MCP 工具
 
@@ -110,6 +114,13 @@ OpenCode 启动时会自动启动 MCP Server。
 | OpenCode | opencode.ai/docs（手动索引） |
 | 本地 | ~/my-claw/*.md（自动监听） |
 
+## 性能优化
+
+- **延迟加载**：模型首次搜索时才加载
+- **搜索缓存**：相同 query 直接返回，CPU ≈ 0
+- **增量索引**：跳过未修改的文件
+- **线程限制**：限制 CPU 核心数
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -131,7 +142,7 @@ MCP-Context9/
 │   ├── embedder.py       # fastembed embedding
 │   └── chunker.py        # 文档分块
 ├── tests/
-├── .venv/               # Python 虚拟环境
+├── .venv/
 ├── requirements.txt
 └── README.md
 ```
