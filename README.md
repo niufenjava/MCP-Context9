@@ -22,16 +22,16 @@ pip install -r requirements.txt
 
 ```bash
 # 启动（后台运行）
-./run_server.sh start
+./context9.sh start
 
 # 停止
-./run_server.sh stop
+./context9.sh stop
 
 # 重启
-./run_server.sh restart
+./context9.sh restart
 
 # 查看状态
-./run_server.sh status
+./context9.sh status
 ```
 
 或手动：
