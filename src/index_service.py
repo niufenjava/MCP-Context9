@@ -199,3 +199,83 @@ class IndexService:
                 del mtimes[path]
             with open(mtime_file, "w") as f:
                 json.dump(mtimes, f)
+
+    def get_url_content_hash(self, url: str) -> Optional[str]:
+        """获取已索引URL的content hash"""
+        meta_file = os.path.join(self.index_dir, "url_content_hash.json")
+        if os.path.exists(meta_file):
+            with open(meta_file, "r") as f:
+                meta = json.load(f)
+            return meta.get(url)
+        return None
+
+    def save_url_content_hash(self, url: str, content_hash: str):
+        """保存URL的content hash"""
+        meta_file = os.path.join(self.index_dir, "url_content_hash.json")
+        meta = {}
+        if os.path.exists(meta_file):
+            with open(meta_file, "r") as f:
+                meta = json.load(f)
+        meta[url] = content_hash
+        with open(meta_file, "w") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+    def remove_url_content_hash(self, url: str):
+        """删除URL的content hash记录"""
+        meta_file = os.path.join(self.index_dir, "url_content_hash.json")
+        if os.path.exists(meta_file):
+            with open(meta_file, "r") as f:
+                meta = json.load(f)
+            if url in meta:
+                del meta[url]
+            with open(meta_file, "w") as f:
+                json.dump(meta, f, ensure_ascii=False)
+
+    def delete_document_by_url(self, url: str):
+        """根据URL删除文档"""
+        self._init_tables()
+        conn = self._get_conn()
+        rowids = [r[0] for r in conn.execute(
+            "SELECT vec_rowid FROM doc_chunks WHERE url = ?", (url,)
+        ).fetchall()]
+        for rowid in rowids:
+            conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (rowid,))
+        conn.execute("DELETE FROM doc_chunks WHERE url = ?", (url,))
+        conn.commit()
+
+    def get_indexed_urls(self, source: str) -> Set[str]:
+        """获取某来源已索引的所有URL"""
+        self._init_tables()
+        conn = self._get_conn()
+        urls = conn.execute(
+            "SELECT DISTINCT url FROM doc_chunks WHERE source = ?", (source,)
+        ).fetchall()
+        return {r[0] for r in urls}
+
+    def upsert_document(self, doc: dict, content_hash: Optional[str] = None):
+        """更新或插入文档"""
+        self._init_tables()
+        conn = self._get_conn()
+        existing_rowids = [r[0] for r in conn.execute(
+            "SELECT vec_rowid FROM doc_chunks WHERE url = ?", (doc["url"],)
+        ).fetchall()]
+        for rowid in existing_rowids:
+            conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (rowid,))
+        conn.execute("DELETE FROM doc_chunks WHERE url = ?", (doc["url"],))
+        chunks = chunk_markdown(doc["content"])
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"{doc['doc_id']}-{i}"
+            embedding = self.embedder.encode(chunk["content"])[0]
+            vec_blob = sqlite_vec.serialize_float32(embedding)
+            cursor = conn.execute(
+                "INSERT INTO vec_chunks(embedding) VALUES (?)",
+                (vec_blob,)
+            )
+            vec_rowid = cursor.lastrowid
+            conn.execute(
+                "INSERT INTO doc_chunks (chunk_id, doc_id, title, source, url, content, chunk_index, vec_rowid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (chunk_id, doc["doc_id"], doc["title"], doc["source"], doc["url"], chunk["content"], i, vec_rowid)
+            )
+        if content_hash:
+            self.save_url_content_hash(doc["url"], content_hash)
+        conn.commit()

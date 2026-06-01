@@ -57,11 +57,20 @@ class OfficialDocCrawler:
             return False
         return True
 
-    def crawl_page(self, url: str) -> Optional[str]:
-        """爬取单个页面内容"""
+    def crawl_page(self, url: str, content_hash: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+        """爬取单个页面内容，返回 (content, content_hash) 或 (None, None) 表示未变化"""
         try:
-            response = self.client.get(url)
+            headers = {}
+            if content_hash:
+                headers["If-None-Match"] = content_hash
+            response = self.client.get(url, headers=headers)
+            if response.status_code == 304:
+                return None, None
             response.raise_for_status()
+            new_hash = (
+                response.headers.get("x-amz-meta-openclaw-md5") or
+                response.headers.get("etag", "").strip('"')
+            )
             soup = BeautifulSoup(response.text, "lxml")
 
             for tag in soup(["script", "style"]):
@@ -69,10 +78,10 @@ class OfficialDocCrawler:
 
             text = soup.get_text(separator="\n", strip=True)
             lines = [line for line in text.split("\n") if line.strip()]
-            return "\n".join(lines)
+            return "\n".join(lines), new_hash
         except Exception as e:
             print(f"Error crawling {url}: {e}")
-            return None
+            return None, None
 
     def get_doc_title(self, url: str, content: str = "") -> str:
         """从 URL 或内容提取文档标题"""
