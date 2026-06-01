@@ -1,14 +1,14 @@
 # MCP-Context9
 
-索引 OpenCode 官方文档及本地 Markdown，提供语义检索。
+索引 OpenCode、OpenClaw 官方文档及本地 Markdown，提供语义检索。
 
 ## 功能
 
-- 语义检索 OpenCode 官方文档
+- 语义检索 OpenCode、OpenClaw 官方文档
 - 本地 Markdown 文档实时监听索引（~/my-claw）
 - MCP 协议集成，OpenClaw/OpenCode 可直接调用
 - 搜索结果缓存，重复查询零 CPU
-- 增量索引，只处理变更文件
+- 增量索引，官方文档用 content hash 检测变化
 - 向量存储使用 sqlite-vec（轻量、无 SIGSEGV 问题）
 
 ## 安装
@@ -18,14 +18,30 @@ cd /Users/niufen/my-projects/MCP-Context9
 pip install -r requirements.txt
 ```
 
-## 启动
-
-OpenClaw/OpenCode 启动时会自动拉起 MCP Server（需在 `openclaw.json` 中配置 `mcp.servers.context9`）。
-
-手动启动：
+## 本地启动与停止
 
 ```bash
-.venv/bin/python -m src.server
+# 启动（后台运行）
+./run_server.sh start
+
+# 停止
+./run_server.sh stop
+
+# 重启
+./run_server.sh restart
+
+# 查看状态
+./run_server.sh status
+```
+
+或手动：
+
+```bash
+# 启动
+PYTHONUNBUFFERED=1 .venv/bin/python -m src.server > /tmp/server_out.txt 2>&1 &
+
+# 停止
+ps aux | grep "src.server" | grep -v grep | awk '{print $2}' | xargs kill
 ```
 
 ## OpenClaw 配置
@@ -74,7 +90,7 @@ OpenClaw/OpenCode 启动时会自动拉起 MCP Server（需在 `openclaw.json` �
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | query | string | 是 | 搜索 query |
-| source | string | 否 | 过滤来源：`opencode` / `local` |
+| source | string | 否 | 过滤来源：`opencode` / `openclaw` / `local` |
 | limit | integer | 否 | 返回数量，默认 5 |
 
 ### get_doc 参数
@@ -85,10 +101,11 @@ OpenClaw/OpenCode 启动时会自动拉起 MCP Server（需在 `openclaw.json` �
 
 ## 数据源
 
-| 来源 | 说明 |
-|------|------|
-| OpenCode | opencode.ai/docs（服务启动时自动爬取） |
-| 本地 | ~/my-claw/*.md（FileWatcher 自动监听） |
+| 来源 | 说明 | 更新方式 |
+|------|------|----------|
+| OpenCode | opencode.ai/docs（35 英文页） | 启动时增量检查 |
+| OpenClaw | docs.openclaw.ai（683 英文页） | 启动时增量检查 |
+| 本地 | ~/my-claw/*.md | FileWatcher 实时监听 |
 
 ## 性能优化
 
