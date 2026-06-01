@@ -1,4 +1,5 @@
 import watchdog.events
+import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import os
@@ -8,6 +9,8 @@ from src.index_service import IndexService
 class MarkdownFileHandler(FileSystemEventHandler):
     def __init__(self, index_service: IndexService):
         self.index_service = index_service
+        self._indexing_lock = threading.Lock()
+        self._currently_indexing: set = set()
 
     def on_modified(self, event):
         if event.is_directory or not event.src_path.endswith(".md"):
@@ -27,6 +30,10 @@ class MarkdownFileHandler(FileSystemEventHandler):
         self.index_service.remove_file_mtime(event.src_path)
 
     def _index_file(self, path: str):
+        with self._indexing_lock:
+            if path in self._currently_indexing:
+                return
+            self._currently_indexing.add(path)
         try:
             mtime = os.path.getmtime(path)
             if self.index_service.is_file_indexed(path, mtime):
@@ -45,6 +52,9 @@ class MarkdownFileHandler(FileSystemEventHandler):
             self.index_service.save_file_mtime(path, mtime)
         except Exception as e:
             print(f"Error indexing {path}: {e}")
+        finally:
+            with self._indexing_lock:
+                self._currently_indexing.discard(path)
 
     def _path_to_doc_id(self, path: str) -> str:
         return f"local-{path.replace('/', '-').replace(' ', '-')}"

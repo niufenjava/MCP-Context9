@@ -20,7 +20,7 @@ class IndexService:
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.execute("PRAGMA secure_delete = ON")
             self._conn.enable_load_extension(True)
@@ -64,6 +64,11 @@ class IndexService:
         """添加文档到索引"""
         self._init_tables()
         conn = self._get_conn()
+        existing = conn.execute(
+            "SELECT COUNT(*) FROM doc_chunks WHERE doc_id = ?", (doc["doc_id"],)
+        ).fetchone()[0]
+        if existing > 0:
+            return
         chunks = chunk_markdown(doc["content"])
         for i, chunk in enumerate(chunks):
             chunk_id = f"{doc['doc_id']}-{i}"
@@ -87,7 +92,7 @@ class IndexService:
         import sqlite_vec
         vec_blob = sqlite_vec.serialize_float32(embedding)
         conn = self._get_conn()
-        fetch_limit = limit * 5 if source else limit
+        fetch_limit = limit * 20 if source else limit
         results = conn.execute(f"""
             SELECT
                 dc.chunk_id, dc.doc_id, dc.title, dc.source, dc.url, dc.content, dc.chunk_index,
