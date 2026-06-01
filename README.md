@@ -1,14 +1,15 @@
 # MCP-Context9
 
-索引 OpenClaw/OpenCode 官方文档及本地 Markdown，提供语义检索。
+索引 OpenCode 官方文档及本地 Markdown，提供语义检索。
 
 ## 功能
 
-- 语义检索官方文档（OpenClaw、OpenCode）
-- 本地 Markdown 文档实时监听索引
+- 语义检索 OpenCode 官方文档
+- 本地 Markdown 文档实时监听索引（~/my-claw）
 - MCP 协议集成，OpenClaw/OpenCode 可直接调用
 - 搜索结果缓存，重复查询零 CPU
 - 增量索引，只处理变更文件
+- 向量存储使用 sqlite-vec（轻量、无 SIGSEGV 问题）
 
 ## 安装
 
@@ -19,67 +20,43 @@ pip install -r requirements.txt
 
 ## 启动
 
-OpenClaw/OpenCode 启动时会自动拉起 MCP Server。
+OpenClaw/OpenCode 启动时会自动拉起 MCP Server（需在 `openclaw.json` 中配置 `mcp.servers.context9`）。
 
 手动启动：
 
 ```bash
-source .venv/bin/activate
-python -m src.server
-```
-
-## 索引官方文档
-
-首次使用需要手动索引：
-
-```bash
-source .venv/bin/activate
-python -c "
-from src.crawler import OfficialDocCrawler
-from src.index_service import IndexService
-
-crawler = OfficialDocCrawler()
-index_service = IndexService()
-
-# 索引 OpenClaw 文档
-print('Indexing OpenClaw...')
-docs = crawler.crawl_source('openclaw', limit=200)
-for doc in docs:
-    index_service.add_document(doc)
-print(f'Indexed {len(docs)} docs')
-
-# 索引 OpenCode 文档
-print('Indexing OpenCode...')
-docs = crawler.crawl_source('opencode', limit=200)
-for doc in docs:
-    index_service.add_document(doc)
-print(f'Indexed {len(docs)} docs')
-"
+.venv/bin/python -m src.server
 ```
 
 ## OpenClaw 配置
 
+在 `~/.openclaw/openclaw.json` 的 `mcp.servers` 中添加：
+
 ```json
-{
-  "mcpServers": {
-    "context9": {
-      "command": "/Users/niufen/my-projects/MCP-Context9/.venv/bin/python",
-      "args": ["-m", "src.server"],
-      "cwd": "/Users/niufen/my-projects/MCP-Context9"
-    }
+"context9": {
+  "command": "/usr/local/bin/python3",
+  "args": ["-m", "src.server"],
+  "cwd": "/Users/niufen/my-projects/MCP-Context9",
+  "env": {
+    "PATH": "/Users/niufen/my-projects/MCP-Context9/.venv/bin:/usr/local/bin:/usr/bin"
   }
 }
 ```
 
 ## OpenCode 配置
 
+在 `~/.config/opencode/opencode.jsonc` 中添加：
+
 ```json
 {
   "mcpServers": {
     "context9": {
-      "command": "/Users/niufen/my-projects/MCP-Context9/.venv/bin/python",
+      "command": "/usr/local/bin/python3",
       "args": ["-m", "src.server"],
-      "cwd": "/Users/niufen/my-projects/MCP-Context9"
+      "cwd": "/Users/niufen/my-projects/MCP-Context9",
+      "env": {
+        "PATH": "/Users/niufen/my-projects/MCP-Context9/.venv/bin:/usr/local/bin:/usr/bin"
+      }
     }
   }
 }
@@ -97,7 +74,7 @@ print(f'Indexed {len(docs)} docs')
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | query | string | 是 | 搜索 query |
-| source | string | 否 | 过滤来源：`openclaw` / `opencode` / `local` |
+| source | string | 否 | 过滤来源：`opencode` / `local` |
 | limit | integer | 否 | 返回数量，默认 5 |
 
 ### get_doc 参数
@@ -110,23 +87,21 @@ print(f'Indexed {len(docs)} docs')
 
 | 来源 | 说明 |
 |------|------|
-| OpenClaw | docs.openclaw.ai（手动索引） |
-| OpenCode | opencode.ai/docs（手动索引） |
-| 本地 | ~/my-claw/*.md（自动监听） |
+| OpenCode | opencode.ai/docs（服务启动时自动爬取） |
+| 本地 | ~/my-claw/*.md（FileWatcher 自动监听） |
 
 ## 性能优化
 
 - **延迟加载**：模型首次搜索时才加载
 - **搜索缓存**：相同 query 直接返回，CPU ≈ 0
 - **增量索引**：跳过未修改的文件
-- **线程限制**：限制 CPU 核心数
+- **sqlite-vec**：轻量 SQLite 扩展，无 Rust 绑定问题
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `INDEX_DIR` | `~/.index/doc-index` | ChromaDB 索引目录 |
-| `LOCAL_DOCS_PATH` | `~/my-claw` | 本地文档路径 |
+| `INDEX_DIR` | `~/.index/doc-index` | 索引目录（含 sqlite 数据库和 JSON 元数据） |
 
 ## 项目结构
 
@@ -135,8 +110,8 @@ MCP-Context9/
 ├── src/
 │   ├── server.py         # MCP Server
 │   ├── tools.py          # search_docs, get_doc
-│   ├── index_service.py  # ChromaDB 索引
-│   ├── crawler.py        # 官方文档爬虫
+│   ├── index_service.py  # sqlite-vec 索引
+│   ├── crawler.py        # OpenCode 文档爬虫
 │   └── file_watcher.py  # 本地文件监听
 ├── indexer/
 │   ├── embedder.py       # fastembed embedding
@@ -146,3 +121,9 @@ MCP-Context9/
 ├── requirements.txt
 └── README.md
 ```
+
+## 技术选型
+
+- **向量数据库**：sqlite-vec（纯 C SQLite 扩展，稳定轻量）
+- **Embedding 模型**：BAAI/bge-small-en（384 维，13MB）
+- **MCP 协议**：stdio 模式
