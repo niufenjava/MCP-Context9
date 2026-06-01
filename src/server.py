@@ -1,8 +1,10 @@
 import os
+import asyncio
 import threading
 import mcp
 from mcp.server import Server
 from mcp.types import Tool, TextContent
+from mcp.server.stdio import stdio_server
 from src.tools import search_docs, get_doc, get_index_service
 from src.file_watcher import FileWatcher
 from src.crawler import OfficialDocCrawler
@@ -54,6 +56,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     else:
         raise ValueError(f"Unknown tool: {name}")
 
+async def main():
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
 if __name__ == "__main__":
     local_docs_path = os.path.expanduser("~/my-claw")
     watcher = FileWatcher(root_dir=local_docs_path)
@@ -61,4 +68,4 @@ if __name__ == "__main__":
     watcher_thread.start()
     watcher.index_existing()
 
-    mcp.server.run_server(server)
+    asyncio.run(main())

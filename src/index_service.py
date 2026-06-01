@@ -13,9 +13,7 @@ class IndexService:
         self.index_dir = index_dir or os.path.expanduser("~/.index/doc-index")
         os.makedirs(self.index_dir, exist_ok=True)
         
-        os.environ["OMP_NUM_THREADS"] = "2"
-        
-        self.client = chromadb.PersistentClient(path=self.index_dir)
+        self.client = chromadb.EphemeralClient()
         self.collection = self.client.get_or_create_collection(
             name="documents",
             metadata={"hnsw:space": "cosine"}
