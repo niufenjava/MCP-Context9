@@ -68,12 +68,20 @@ if __name__ == "__main__":
     watcher_thread.start()
     watcher.index_existing()
 
-    print("[Server] Crawling OpenCode docs...")
-    crawler = OfficialDocCrawler()
-    opencode_docs = crawler.crawl_source("opencode", limit=200, delay=0.3)
     index_service = get_index_service()
+
+    crawler = OfficialDocCrawler()
+
+    print("[Server] Crawling OpenCode docs...")
+    opencode_docs = crawler.crawl_source("opencode", limit=150, delay=0.3, english_only=True)
     for doc in opencode_docs:
         index_service.add_document(doc)
     print(f"[Server] Indexed {len(opencode_docs)} OpenCode docs")
+
+    print("[Server] Crawling OpenClaw docs...")
+    openclaw_docs = crawler.crawl_source("openclaw", limit=3000, delay=0.3, english_only=True)
+    for doc in openclaw_docs:
+        index_service.add_document(doc)
+    print(f"[Server] Indexed {len(openclaw_docs)} OpenClaw docs")
 
     asyncio.run(main())

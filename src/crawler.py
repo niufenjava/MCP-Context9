@@ -34,6 +34,28 @@ class OfficialDocCrawler:
             "opencode": "https://opencode.ai/docs/sitemap-index.xml"
         }
         self.client = httpx.Client(timeout=30.0)
+        self.lang_prefixes = {
+            "ar", "bs", "da", "de", "es", "fa", "fr", "id", "it", "ja",
+            "ko", "nb", "nl", "pl", "pt-br", "ru", "th", "tr", "uk",
+            "vi", "zh-cn", "zh-tw"
+        }
+
+    def _is_english_url(self, url: str, base_path: str = "") -> bool:
+        """Check if URL is English version (no language prefix in path)"""
+        parsed = urlparse(url)
+        path = parsed.path
+        if base_path and path.startswith(base_path):
+            path = path[len(base_path):]
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            return True
+        first_part = parts[0].lower()
+        if first_part in self.lang_prefixes:
+            return False
+        lang_base = first_part.split("-")[0]
+        if lang_base in self.lang_prefixes:
+            return False
+        return True
 
     def crawl_page(self, url: str) -> Optional[str]:
         """爬取单个页面内容"""
@@ -65,7 +87,7 @@ class OfficialDocCrawler:
             return parts[-1].replace("-", " ").replace(".md", "").title()
         return "Untitled"
 
-    def crawl_source(self, source: str, limit: int = 100, delay: float = 0.5) -> list[dict]:
+    def crawl_source(self, source: str, limit: int = 100, delay: float = 0.5, english_only: bool = True) -> list[dict]:
         """爬取指定来源的所有文档"""
         if source not in self.sources:
             raise ValueError(f"Unknown source: {source}")
@@ -76,7 +98,13 @@ class OfficialDocCrawler:
         try:
             if sitemap_url.endswith(".xml"):
                 sitemap = SitemapParser(sitemap_url)
-                urls = sitemap.urls[:limit] if limit else sitemap.urls
+                all_urls = sitemap.urls
+                if english_only:
+                    if source == "openclaw":
+                        all_urls = [u for u in all_urls if self._is_english_url(u, "/")]
+                    elif source == "opencode":
+                        all_urls = [u for u in all_urls if self._is_english_url(u, "/docs/")]
+                urls = all_urls[:limit] if limit else all_urls
             else:
                 urls = []
 
