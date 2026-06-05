@@ -147,19 +147,25 @@ def update_official_docs(source: str, crawler: OfficialDocCrawler, index_service
 
 
 if __name__ == "__main__":
+    import sys
+    skip_update = "--skip-update" in sys.argv
+
     local_docs_path = os.path.expanduser("~/my-claw")
     watcher = FileWatcher(root_dir=local_docs_path)
     watcher_thread = threading.Thread(target=watcher.start, daemon=True)
     watcher_thread.start()
     watcher.index_existing()
 
-    index_service = get_index_service()
-    crawler = OfficialDocCrawler()
+    if skip_update:
+        print("[Server] Skipping doc update (--skip-update)")
+    else:
+        index_service = get_index_service()
+        crawler = OfficialDocCrawler()
 
-    print("[Server] Updating OpenCode docs...")
-    update_official_docs("opencode", crawler, index_service, limit=150, delay=0.3)
+        print("[Server] Updating OpenCode docs...")
+        update_official_docs("opencode", crawler, index_service, limit=150, delay=0.3)
 
-    print("[Server] Updating OpenClaw docs...")
-    update_official_docs("openclaw", crawler, index_service, limit=3000, delay=0.3)
+        print("[Server] Updating OpenClaw docs...")
+        update_official_docs("openclaw", crawler, index_service, limit=3000, delay=0.3)
 
     asyncio.run(main())

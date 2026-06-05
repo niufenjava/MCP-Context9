@@ -18,64 +18,42 @@ cd /Users/niufen/my-projects/MCP-Context9
 pip install -r requirements.txt
 ```
 
-## 本地启动与停止
+## 打包（部署前）
+
+代码改动后，重新打包发布版本：
 
 ```bash
-# 启动（后台运行）
-./context9.sh start
+./package.sh
+```
 
-# 停止
-./context9.sh stop
+打包输出：`~/.mcp/context9.pyz`（通用 MCP 包，任意目录可用）
 
-# 重启
-./context9.sh restart
+## OpenClaw / OpenCode 配置
 
-# 查看状态
-./context9.sh status
+通用配置，所有 AI Agent 复用同一路径：
+
+```json
+"context9": {
+  "type": "local",
+  "command": ["/Users/niufen/.mcp/context9.pyz", "--skip-update"],
+  "enabled": true
+}
+```
+
+## 本地开发调试
+
+在项目目录下直接启动：
+
+```bash
+./context9.sh start   # 后台运行
+./context9.sh stop    # 停止
+./context9.sh status  # 状态
 ```
 
 或手动：
 
 ```bash
-# 启动
 PYTHONUNBUFFERED=1 .venv/bin/python -m src.server > /tmp/server_out.txt 2>&1 &
-
-# 停止
-ps aux | grep "src.server" | grep -v grep | awk '{print $2}' | xargs kill
-```
-
-## OpenClaw 配置
-
-在 `~/.openclaw/openclaw.json` 的 `mcp.servers` 中添加：
-
-```json
-"context9": {
-  "command": "/usr/local/bin/python3",
-  "args": ["-m", "src.server"],
-  "cwd": "/Users/niufen/my-projects/MCP-Context9",
-  "env": {
-    "PATH": "/Users/niufen/my-projects/MCP-Context9/.venv/bin:/usr/local/bin:/usr/bin"
-  }
-}
-```
-
-## OpenCode 配置
-
-在 `~/.config/opencode/opencode.jsonc` 中添加：
-
-```json
-{
-  "mcpServers": {
-    "context9": {
-      "command": "/usr/local/bin/python3",
-      "args": ["-m", "src.server"],
-      "cwd": "/Users/niufen/my-projects/MCP-Context9",
-      "env": {
-        "PATH": "/Users/niufen/my-projects/MCP-Context9/.venv/bin:/usr/local/bin:/usr/bin"
-      }
-    }
-  }
-}
 ```
 
 ## MCP 工具
